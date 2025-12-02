@@ -1,11 +1,11 @@
 :root {
-  --bg: #ffffff;
-  --panel: #f8fafc;
-  --text: #0f172a;
-  --accent: #2563eb;
+  --bg: #0f172a;
+  --panel: #111827;
+  --text: #e5e7eb;
+  --accent: #38bdf8;
   --accent-2: #a855f7;
-  --warning: #ea580c;
-  --border: #cbd5e1;
+  --warning: #f97316;
+  --border: #1f2937;
 }
 
 * { box-sizing: border-box; }
@@ -49,7 +49,8 @@ body {
   padding: 6px 8px;
   border-radius: 6px;
   border: 1px solid var(--border);
-  background: #ffffff;
+
+  background: #0b1221;
   color: var(--text);
 }
 
@@ -62,7 +63,7 @@ body {
 
 .canvas-panel {
   position: relative;
-  background: #ffffff;
+  background: #0b1221;
   border-right: 1px solid var(--border);
 }
 
@@ -95,13 +96,13 @@ body {
 }
 
 .text-summary {
-  background: #ffffff;
+  background: #0b1221;
   min-height: 120px;
   padding: 12px;
   border: 1px solid var(--border);
   border-radius: 6px;
   white-space: pre-wrap;
-  color: #0f172a;
+  color: #cbd5f5;
 }
 
 .node {
@@ -114,7 +115,7 @@ body {
   cursor: pointer;
   display: grid;
   place-items: center;
-  color: #0f172a;
+  color: #0b1221;
   font-weight: 700;
   font-size: 13px;
 }
@@ -131,10 +132,10 @@ body {
 .node .label {
   position: absolute;
   top: -18px;
-  background: rgba(15, 23, 42, 0.7);
+  background: rgba(0, 0, 0, 0.5);
   padding: 2px 6px;
   border-radius: 4px;
-  color: #f8fafc;
+  color: #f9fafb;
   font-size: 11px;
   white-space: nowrap;
   transform: rotate(-45deg);
@@ -158,15 +159,14 @@ body {
 
 .edge .segment-label {
   position: absolute;
-  background: rgba(255, 255, 255, 0.92);
+  background: rgba(15, 23, 42, 0.92);
   padding: 2px 6px;
   border-radius: 4px;
   border: 1px solid var(--border);
   font-size: 11px;
-  color: #0f172a;
+  color: #e5e7eb;
   white-space: nowrap;
   pointer-events: none;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
 }
 
 .context-menu {
@@ -178,13 +178,12 @@ body {
   display: grid;
   gap: 6px;
   z-index: 10;
-  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
 }
 
 .context-menu.hidden { display: none; }
 
 .context-menu button {
-  background: #ffffff;
+  background: #0b1221;
   color: var(--text);
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -195,7 +194,7 @@ body {
 .modal {
   position: fixed;
   inset: 0;
-  background: rgba(15, 23, 42, 0.25);
+  background: rgba(0, 0, 0, 0.5);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -205,12 +204,11 @@ body {
 .modal.hidden { display: none; }
 
 .modal-content {
-  background: #ffffff;
+  background: var(--panel);
   border-radius: 12px;
   width: 360px;
   max-width: 90vw;
   border: 1px solid var(--border);
-  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.15);
 }
 
 .modal-header, .modal-footer {
@@ -239,7 +237,7 @@ body {
 .segment-row select,
 .segment-row input,
 .modal button {
-  background: #ffffff;
+  background: #0b1221;
   color: var(--text);
   border: 1px solid var(--border);
   border-radius: 6px;
