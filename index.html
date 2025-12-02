@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>管路風量設計工具</title>
+  <link rel="stylesheet" href="styles/style.css" />
+</head>
+<body>
+  <header class="app-header">
+    <h1>管路風量規劃畫布</h1>
+    <div class="controls">
+      <label>風速 (m/s)
+        <input id="velocityInput" type="number" min="0" step="0.1" value="10" />
+      </label>
+      <label>管徑形狀
+        <select id="ductShape">
+          <option value="round">圓管</option>
+          <option value="rect">方管</option>
+        </select>
+      </label>
+      <label>比例尺 (px/m)
+        <input id="scaleInput" type="number" min="1" step="1" value="20" />
+      </label>
+      <button id="exportText">產生文字摘要</button>
+      <button id="clearSelection">清除選取</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="canvas-panel">
+      <div id="canvas" class="canvas" tabindex="0"></div>
+      <div id="contextMenu" class="context-menu hidden">
+        <button data-type="inlet">新增吸風口</button>
+        <button data-type="joint">新增連結點</button>
+        <button data-type="outlet">新增出風口</button>
+      </div>
+    </section>
+    <aside class="sidebar">
+      <section>
+        <h3>說明</h3>
+        <ol>
+          <li>在畫布上按右鍵選擇要新增的節點 (吸風口、連結點、出風口)。</li>
+          <li>點擊兩個節點可建立管路，管路可設定多段水平/垂直距離並直接繪製於畫布 (距離依比例尺呈現)。</li>
+          <li>點擊吸風口可設定風量 (CMM)，連結點會自動累加前方風量。</li>
+          <li>點擊線段可調整距離，線段會標註距離與管徑。</li>
+          <li>按 Delete 刪除選取的節點及其管路。</li>
+        </ol>
+      </section>
+      <section>
+        <h3>文字摘要</h3>
+        <pre id="textSummary" class="text-summary"></pre>
+      </section>
+    </aside>
+  </main>
+
+  <div id="segmentModal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-content">
+      <header class="modal-header">
+        <h3>建立管路</h3>
+        <button id="closeModal" aria-label="close">✕</button>
+      </header>
+      <div class="modal-body">
+        <p>新增上下左右的距離以組成管路，距離會依比例尺轉換成圖面長度。</p>
+        <div id="segmentList" class="segment-list"></div>
+        <button id="addSegment">新增路徑段</button>
+      </div>
+      <footer class="modal-footer">
+        <button id="confirmSegment">建立</button>
+      </footer>
+    </div>
+  </div>
+
+  <script type="module" src="scripts/app.js"></script>
+</body>
+</html>
