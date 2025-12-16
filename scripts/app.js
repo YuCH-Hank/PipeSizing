@@ -107,7 +107,7 @@ function setDuctShape(shape) {
 }
 
 function promptFlow(node) {
-  const value = prompt(`設定 ${node.id} 風量 (m³/s)`, node.baseFlow || 0);
+  const value = prompt(`設定 ${node.id} 風量 (CMM)`, node.baseFlow || 0);
   if (value === null) return;
   const numeric = Number(value);
   if (!Number.isFinite(numeric) || numeric < 0) {
@@ -268,7 +268,8 @@ function computeFlows() {
 
 function requiredDiameter(flow, velocityValue) {
   if (!velocityValue || velocityValue <= 0) return 0;
-  const area = flow / velocityValue;
+  const flowM3s = flow / 60; // 將 CMM 轉換為 m³/s
+  const area = flowM3s / velocityValue;
   if (area <= 0) return 0;
   if (ductShape === 'round') {
     return Math.sqrt((4 * area) / Math.PI);
@@ -296,7 +297,7 @@ function render() {
     el.textContent = node.id;
     const label = document.createElement('span');
     label.className = 'label';
-    label.textContent = `${node.computedFlow.toFixed(2)} m³/s`;
+    label.textContent = `${node.computedFlow.toFixed(2)} CMM`;
     el.appendChild(label);
     el.addEventListener('click', () => handleNodeClick(node));
     nodeLayer.appendChild(el);
