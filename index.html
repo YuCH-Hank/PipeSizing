@@ -1,76 +1,130 @@
 <!DOCTYPE html>
 <html lang="zh-Hant">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>管路風量設計工具</title>
-  <link rel="stylesheet" href="styles/style.css" />
-</head>
-<body>
-  <header class="app-header">
-    <h1>管路風量規劃畫布</h1>
-    <div class="controls">
-      <label>風速 (m/s)
-        <input id="velocityInput" type="number" min="0" step="0.1" value="5" />
-      </label>
-      <label>管徑形狀
-        <select id="ductShape">
-          <option value="round">圓管</option>
-          <option value="rect">方管</option>
-        </select>
-      </label>
-      <label>比例尺 (px/m)
-        <input id="scaleInput" type="number" min="1" step="1" value="20" />
-      </label>
-      <button id="exportText">產生文字摘要</button>
-      <button id="clearSelection">清除選取</button>
-    </div>
-  </header>
-
-  <main class="layout">
-    <section class="canvas-panel">
-      <div id="canvas" class="canvas" tabindex="0"></div>
-      <div id="contextMenu" class="context-menu hidden">
-        <button data-type="inlet">新增吸風口</button>
-        <button data-type="joint">新增連結點</button>
-        <button data-type="outlet">新增出風口</button>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>風量 / 風速管路繪製工具</title>
+    <link rel="stylesheet" href="src/styles.css" />
+  </head>
+  <body>
+    <header class="top-bar">
+      <div>
+        <h1>風量 / 風速管路繪製工具</h1>
+        <p class="subtitle">右鍵新增節點、連線、計算建議管徑與效率</p>
       </div>
-    </section>
-    <aside class="sidebar">
-      <section>
-        <h3>說明</h3>
-        <ol>
-          <li>在畫布上按右鍵選擇要新增的節點 (吸風口、連結點、出風口)。</li>
-          <li>點擊兩個節點可建立管路，管路可設定多段水平/垂直距離。</li>
-          <li>點擊吸風口可設定風量，連結點會自動累加前方風量。</li>
-          <li>點擊線段可調整距離，線段會標註距離與管徑。</li>
-          <li>按 Delete 刪除選取的節點及其管路。</li>
-        </ol>
+      <div id="status" class="status-pill">待命</div>
+    </header>
+    <main class="layout">
+      <section class="panel">
+        <div class="field">
+          <label for="velocity">預設風速 (m/s)</label>
+          <input id="velocity" type="number" min="0" step="0.1" value="13" />
+        </div>
+        <div class="field">
+          <label for="shape">預設管型</label>
+          <select id="shape">
+            <option value="round">圓管</option>
+            <option value="square">方管</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="scale">比例 (px / m)</label>
+          <input id="scale" type="number" min="2" step="1" value="18" />
+        </div>
+        <div class="button-row">
+          <button id="exportBtn">匯出結果</button>
+          <button id="clearBtn" class="ghost">清除全部</button>
+          <button id="recalcBtn">重新計算</button>
+        </div>
+        <div class="card">
+          <div class="card-title">節點設定</div>
+          <div class="field">
+            <label for="nodeName">名稱</label>
+            <input id="nodeName" type="text" readonly />
+          </div>
+          <div class="field">
+            <label for="nodeType">類型</label>
+            <input id="nodeType" type="text" readonly />
+          </div>
+          <div class="field">
+            <label for="nodeFlow">風量 (CMM)</label>
+            <input id="nodeFlow" type="number" min="0" step="0.01" />
+          </div>
+          <button id="applyNode">套用節點設定</button>
+        </div>
+        <div class="legend">
+          <div><span class="legend-icon inlet"></span>進風口 (a)</div>
+          <div><span class="legend-icon junction"></span>節點 (b)</div>
+          <div><span class="legend-icon outlet"></span>出風口 (c)</div>
+          <div><span class="legend-line round"></span>圓管</div>
+          <div><span class="legend-line square"></span>方管</div>
+        </div>
+        <div class="hint">
+          - 右鍵開啟選單新增節點<br />
+          - 連線模式下，依兩節點距離自動計算長度<br />
+          - Delete 可刪除節點並移除管線<br />
+          - 比例(px/m) 決定距離換算
+        </div>
+        <label class="field">
+          <span>匯出內容</span>
+          <textarea id="textOutput" rows="10" readonly></textarea>
+        </label>
       </section>
-      <section>
-        <h3>文字摘要</h3>
-        <pre id="textSummary" class="text-summary"></pre>
+      <section class="board">
+        <div class="board-header">
+          <div class="header-actions">
+            <button id="connectBtn">連線模式</button>
+            <button id="toggleGrid" class="ghost small">切換網格</button>
+          </div>
+        </div>
+        <div id="canvas" tabindex="0">
+          <svg id="connectionLayer"></svg>
+          <div id="labelLayer"></div>
+          <div id="nodeLayer"></div>
+          <div id="contextMenu" class="menu hidden" role="menu">
+            <button data-type="inlet">新增進風口</button>
+            <button data-type="junction">新增節點</button>
+            <button data-type="outlet">新增出風口</button>
+          </div>
+        </div>
+        <div class="card edge-card">
+          <div class="card-title">線段設定</div>
+          <div class="field">
+            <label for="edgeShape">管型</label>
+            <select id="edgeShape">
+              <option value="round">圓管</option>
+              <option value="square">方管</option>
+            </select>
+          </div>
+          <div id="edgeExtra" class="edge-extra hidden">
+            <div class="field">
+              <label for="edgeRoute">路徑（自動計算）</label>
+              <input id="edgeRoute" type="text" readonly />
+            </div>
+            <div class="field two-col">
+              <div class="field inline">
+                <label for="edgeWidth">方管寬 (mm)</label>
+                <input id="edgeWidth" type="number" min="0" step="50" />
+              </div>
+              <div class="field inline">
+                <label for="edgeHeight">方管高 (mm)</label>
+                <input id="edgeHeight" type="number" min="0" step="50" />
+              </div>
+            </div>
+            <div class="field">
+              <label for="edgeLength">距離 (m)</label>
+              <input id="edgeLength" type="text" readonly />
+            </div>
+            <div class="field">
+              <label for="edgeDiameter">管徑 / 尺寸</label>
+              <input id="edgeDiameter" type="text" readonly />
+            </div>
+            <button id="applyEdge">套用線段設定</button>
+          </div>
+        </div>
       </section>
-    </aside>
-  </main>
-
-  <div id="segmentModal" class="modal hidden" role="dialog" aria-modal="true">
-    <div class="modal-content">
-      <header class="modal-header">
-        <h3>建立管路</h3>
-        <button id="closeModal" aria-label="close">✕</button>
-      </header>
-      <div class="modal-body">
-        <p>新增上下左右的距離以組成管路，距離會依比例尺轉換成圖面長度。</p>
-        <div id="segmentList" class="segment-list"></div>
-        <button id="addSegment">新增路徑段</button>
-      </div>
-      <footer class="modal-footer">
-        <button id="confirmSegment">建立</button>
-      </footer>
-    </div>
-  </div>
-
-  <script type="module" src="scripts/app.js"></script>
-</body>
+    </main>
+    <div id="debugLog" class="log-panel" aria-live="polite"></div>
+    <script type="module" src="src/main.js"></script>
+  </body>
 </html>

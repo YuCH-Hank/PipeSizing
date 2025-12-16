@@ -1,0 +1,588 @@
+﻿/**
+ * @file main.js
+ * @brief Airflow graph editor with distance-based connections and duct sizing.
+ */
+
+const canvas = document.getElementById("canvas");
+const nodeLayer = document.getElementById("nodeLayer");
+const labelLayer = document.getElementById("labelLayer");
+const svg = document.getElementById("connectionLayer");
+const contextMenu = document.getElementById("contextMenu");
+const textOutput = document.getElementById("textOutput");
+const velocityInput = document.getElementById("velocity");
+const shapeInput = document.getElementById("shape");
+const scaleInput = document.getElementById("scale");
+const connectBtn = document.getElementById("connectBtn");
+const exportBtn = document.getElementById("exportBtn");
+const clearBtn = document.getElementById("clearBtn");
+const toggleGridBtn = document.getElementById("toggleGrid");
+const recalcBtn = document.getElementById("recalcBtn");
+const statusPill = document.getElementById("status");
+const nodeNameInput = document.getElementById("nodeName");
+const nodeTypeInput = document.getElementById("nodeType");
+const nodeFlowInput = document.getElementById("nodeFlow");
+const applyNodeBtn = document.getElementById("applyNode");
+const edgeRouteInput = document.getElementById("edgeRoute");
+const edgeVelocityInput = document.getElementById("edgeVelocity");
+const edgeShapeInput = document.getElementById("edgeShape");
+const edgeLengthInput = document.getElementById("edgeLength");
+const edgeDiameterInput = document.getElementById("edgeDiameter");
+const applyEdgeBtn = document.getElementById("applyEdge");
+
+/**
+ * @typedef Node
+ * @property {string} id
+ * @property {string} name
+ * @property {"inlet"|"junction"|"outlet"} type
+ * @property {number} x
+ * @property {number} y
+ * @property {number} flowCmm
+ * @property {number} calculatedFlowCmm
+ */
+
+/**
+ * @typedef Segment
+ * @property {"up"|"down"|"left"|"right"} dir
+ * @property {number} length
+ */
+
+/**
+ * @typedef Edge
+ * @property {string} id
+ * @property {string} from
+ * @property {string} to
+ * @property {Segment[]} segments
+ * @property {"round"|"square"} shape
+ * @property {number} velocity
+ * @property {number} diameter
+ * @property {number} flowCmm
+ * @property {number} lengthMeters
+ */
+
+const state = {
+  nodes: [],
+  edges: [],
+  counters: { inlet: 1, junction: 1, outlet: 1 },
+  selectedNodeId: null,
+  selectedEdgeId: null,
+  connectStart: null,
+  pixelsPerMeter: Number(scaleInput.value) || 18,
+};
+
+/** Updates the status badge text. */
+function setStatus(text) {
+  statusPill.textContent = text;
+}
+
+canvas.addEventListener("contextmenu", (event) => {
+  event.preventDefault();
+  const { x, y } = toCanvasPos(event.clientX, event.clientY);
+  contextMenu.style.left = `${x}px`;
+  contextMenu.style.top = `${y}px`;
+  contextMenu.dataset.x = x.toString();
+  contextMenu.dataset.y = y.toString();
+  contextMenu.classList.remove("hidden");
+});
+
+document.addEventListener("click", (event) => {
+  if (!contextMenu.contains(event.target)) {
+    contextMenu.classList.add("hidden");
+  }
+});
+
+contextMenu.addEventListener("click", (event) => {
+  const button = event.target.closest("button");
+  if (!button) return;
+  const type = button.dataset.type;
+  const x = Number(contextMenu.dataset.x);
+  const y = Number(contextMenu.dataset.y);
+  addNode(type, x, y);
+  contextMenu.classList.add("hidden");
+});
+
+nodeLayer.addEventListener("click", (event) => {
+  const nodeEl = event.target.closest(".node");
+  if (!nodeEl) return;
+  const node = state.nodes.find((item) => item.id === nodeEl.dataset.id);
+  if (!node) return;
+
+  state.selectedNodeId = node.id;
+  state.selectedEdgeId = null;
+  populateNodeForm(node);
+  clearEdgeForm();
+
+  if (connectBtn.classList.contains("active")) {
+    if (!state.connectStart) {
+      state.connectStart = node.id;
+      setStatus(`韏琿?嚗?{node.name}嚗??蝯?`);
+    } else if (state.connectStart === node.id) {
+      state.connectStart = null;
+      setStatus("撌脣?瘨??");
+    } else {
+      buildEdge(state.connectStart, node.id);
+      state.connectStart = null;
+      connectBtn.classList.remove("active");
+      setStatus("???摰?嚗隤踵憸券?蝞∪?");
+    }
+  }
+
+  renderNodes();
+});
+
+svg.addEventListener("click", (event) => {
+  const poly = event.target.closest("polyline");
+  if (!poly) return;
+  const edge = state.edges.find((item) => item.id === poly.dataset.id);
+  if (!edge) return;
+  state.selectedEdgeId = edge.id;
+  state.selectedNodeId = null;
+  populateEdgeForm(edge);
+  clearNodeForm();
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Delete" && state.selectedNodeId) {
+    deleteNode(state.selectedNodeId);
+  }
+});
+
+connectBtn.addEventListener("click", () => {
+  connectBtn.classList.toggle("active");
+  state.connectStart = null;
+  setStatus(connectBtn.classList.contains("active") ? "???璅∪?" : "敺");
+});
+
+exportBtn.addEventListener("click", () => {
+  textOutput.value = buildText();
+});
+
+clearBtn.addEventListener("click", () => {
+  if (!confirm("蝣箏?皜征???暺?頝舐?嚗?)) return;
+  state.nodes = [];
+  state.edges = [];
+  state.selectedNodeId = null;
+  state.selectedEdgeId = null;
+  state.counters = { inlet: 1, junction: 1, outlet: 1 };
+  clearNodeForm();
+  clearEdgeForm();
+  renderAll();
+  textOutput.value = "";
+});
+
+toggleGridBtn.addEventListener("click", () => {
+  canvas.classList.toggle("no-grid");
+});
+
+recalcBtn.addEventListener("click", () => {
+  state.pixelsPerMeter = Number(scaleInput.value) || state.pixelsPerMeter;
+  recomputeFlows();
+});
+
+scaleInput.addEventListener("change", () => {
+  state.pixelsPerMeter = Number(scaleInput.value) || state.pixelsPerMeter;
+  renderEdges();
+});
+
+velocityInput.addEventListener("change", () => {
+  setStatus("撌脫?圈?閮剝◢??);
+});
+
+applyNodeBtn.addEventListener("click", () => {
+  if (!state.selectedNodeId) return;
+  const node = state.nodes.find((item) => item.id === state.selectedNodeId);
+  if (!node) return;
+  if (node.type === "inlet") {
+    node.flowCmm = Number(nodeFlowInput.value) || 0;
+    node.calculatedFlowCmm = node.flowCmm;
+  }
+  renderNodes();
+  recomputeFlows();
+});
+
+applyEdgeBtn.addEventListener("click", () => {
+  if (!state.selectedEdgeId) return;
+  const edge = state.edges.find((item) => item.id === state.selectedEdgeId);
+  if (!edge) return;
+  edge.velocity = Number(edgeVelocityInput.value) || 0;
+  edge.shape = edgeShapeInput.value === "square" ? "square" : "round";
+  recomputeFlows();
+});
+
+/**
+ * Converts viewport coordinates to canvas-local coordinates.
+ * @param {number} clientX - Mouse X.
+ * @param {number} clientY - Mouse Y.
+ * @returns {{x:number,y:number}} Canvas point.
+ */
+function toCanvasPos(clientX, clientY) {
+  const rect = canvas.getBoundingClientRect();
+  return { x: clientX - rect.left, y: clientY - rect.top };
+}
+
+/**
+ * Adds a new node to the canvas and renders it.
+ * @param {"inlet"|"junction"|"outlet"} type - Node category.
+ * @param {number} x - Canvas X position.
+ * @param {number} y - Canvas Y position.
+ */
+function addNode(type, x, y) {
+  const prefix = { inlet: "a", junction: "b", outlet: "c" }[type] || "n";
+  const node = {
+    id: `${type}-${Date.now()}-${Math.random().toString(16).slice(2, 6)}`,
+    name: `${prefix}${state.counters[type]++}`,
+    type,
+    x,
+    y,
+    flowCmm: type === "inlet" ? 30 : 0,
+    calculatedFlowCmm: type === "inlet" ? 30 : 0,
+  };
+  state.nodes.push(node);
+  renderNodes();
+  setStatus(`撌脫憓?${node.name}`);
+}
+
+/**
+ * Creates an edge between two nodes using their measured distance.
+ * @param {string} fromId - Starting node id.
+ * @param {string} toId - Ending node id.
+ */
+function buildEdge(fromId, toId) {
+  const startNode = state.nodes.find((item) => item.id === fromId);
+  const endNode = state.nodes.find((item) => item.id === toId);
+  if (!startNode || !endNode) return;
+  const edge = {
+    id: `edge-${Date.now()}-${Math.random().toString(16).slice(2, 6)}`,
+    from: fromId,
+    to: toId,
+    segments: [],
+    shape: shapeInput.value === "square" ? "square" : "round",
+    velocity: Number(velocityInput.value) || 0,
+    diameter: 0,
+    flowCmm: 0,
+    lengthMeters: 0,
+  };
+  refreshEdgeGeometry(edge);
+  state.edges.push(edge);
+  state.selectedEdgeId = edge.id;
+  state.selectedNodeId = null;
+  populateEdgeForm(edge);
+  clearNodeForm();
+  recomputeFlows();
+}
+
+/**
+ * Updates edge geometry based on current node locations and scale.
+ * @param {Edge} edge - Edge to refresh.
+ */
+function refreshEdgeGeometry(edge) {
+  const start = state.nodes.find((item) => item.id === edge.from);
+  const end = state.nodes.find((item) => item.id === edge.to);
+  if (!start || !end) return;
+  edge.segments = generateSegmentsFromNodes(start, end);
+  edge.lengthMeters = edge.segments.reduce((acc, seg) => acc + seg.length, 0);
+}
+
+/**
+ * Generates axis-aligned segments that span from start to end.
+ * @param {Node} start - Start node.
+ * @param {Node} end - End node.
+ * @returns {Segment[]} Segments derived from distance.
+ */
+function generateSegmentsFromNodes(start, end) {
+  const dxPx = end.x - start.x;
+  const dyPx = end.y - start.y;
+  const scale = state.pixelsPerMeter || 1;
+  const segments = [];
+  if (Math.abs(dxPx) > 0.01) {
+    segments.push({
+      dir: dxPx >= 0 ? "right" : "left",
+      length: Math.abs(dxPx) / scale,
+    });
+  }
+  if (Math.abs(dyPx) > 0.01) {
+    segments.push({
+      dir: dyPx >= 0 ? "down" : "up",
+      length: Math.abs(dyPx) / scale,
+    });
+  }
+  if (!segments.length) {
+    segments.push({ dir: "right", length: 0 });
+  }
+  return segments;
+}
+
+/**
+ * Renders all nodes to the DOM.
+ */
+function renderNodes() {
+  nodeLayer.innerHTML = "";
+  for (const node of state.nodes) {
+    const element = document.createElement("div");
+    element.className = `node ${node.type}${state.selectedNodeId === node.id ? " selected" : ""}`;
+    element.dataset.id = node.id;
+    element.style.left = `${node.x}px`;
+    element.style.top = `${node.y}px`;
+    element.innerHTML = `<div class="name">${node.name}</div><div class="flow">憸券? ${formatNumber(
+      node.calculatedFlowCmm ?? node.flowCmm ?? 0,
+    )} CMM</div>`;
+    nodeLayer.appendChild(element);
+  }
+}
+
+/**
+ * Renders SVG edges and labels.
+ */
+function renderEdges() {
+  svg.innerHTML = "";
+  labelLayer.innerHTML = "";
+  for (const edge of state.edges) {
+    refreshEdgeGeometry(edge);
+    const start = state.nodes.find((item) => item.id === edge.from);
+    if (!start) continue;
+    const points = buildPoints(start, edge.segments);
+    const poly = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
+    poly.setAttribute(
+      "points",
+      points
+        .map((point) => `${point.x},${point.y}`)
+        .join(" ")
+        .trim(),
+    );
+    poly.classList.add("edge", edge.shape === "square" ? "square" : "round");
+    poly.dataset.id = edge.id;
+    poly.style.pointerEvents = "auto";
+    svg.appendChild(poly);
+
+    const labelPos = midPoint(points, edge.segments);
+    const label = document.createElement("div");
+    label.className = "edge-label";
+    const diameterText =
+      edge.diameter && edge.diameter > 0
+        ? `${edge.shape === "square" ? "?寧恣" : "?恣"} ${edge.diameter.toFixed(2)}m`
+        : "?芾?蝞?;
+    label.textContent = `${edge.lengthMeters.toFixed(2)}m | ${diameterText}`;
+    label.style.left = `${labelPos.x}px`;
+    label.style.top = `${labelPos.y}px`;
+    labelLayer.appendChild(label);
+  }
+  if (state.selectedEdgeId) {
+    const edge = state.edges.find((item) => item.id === state.selectedEdgeId);
+    if (edge) populateEdgeForm(edge);
+  }
+}
+
+/**
+ * Builds a polyline point list from a start position and segments.
+ * @param {Node} start - Start node.
+ * @param {Segment[]} segments - Route segments.
+ * @returns {{x:number,y:number}[]} Polyline vertices.
+ */
+function buildPoints(start, segments) {
+  const points = [{ x: start.x, y: start.y }];
+  let x = start.x;
+  let y = start.y;
+  for (const segment of segments) {
+    const distancePx = segment.length * state.pixelsPerMeter;
+    if (segment.dir === "right") x += distancePx;
+    if (segment.dir === "left") x -= distancePx;
+    if (segment.dir === "down") y += distancePx;
+    if (segment.dir === "up") y -= distancePx;
+    points.push({ x, y });
+  }
+  return points;
+}
+
+/**
+ * Returns the midpoint of the polyline to place the label.
+ * @param {{x:number,y:number}[]} points - Polyline vertices.
+ * @param {Segment[]} segments - Route segments.
+ * @returns {{x:number,y:number}} Midpoint position.
+ */
+function midPoint(points, segments) {
+  const total = segments.reduce((acc, seg) => acc + seg.length, 0);
+  const half = total / 2;
+  let walked = 0;
+  for (let index = 1; index < points.length; index += 1) {
+    const segmentLength = segments[index - 1].length;
+    if (walked + segmentLength >= half) {
+      const ratio = (half - walked) / segmentLength || 0;
+      return {
+        x: points[index - 1].x + (points[index].x - points[index - 1].x) * ratio,
+        y: points[index - 1].y + (points[index].y - points[index - 1].y) * ratio,
+      };
+    }
+    walked += segmentLength;
+  }
+  return points[points.length - 1];
+}
+
+/**
+ * Recomputes flows, diameters, and rerenders the scene.
+ */
+function recomputeFlows() {
+  state.pixelsPerMeter = Number(scaleInput.value) || state.pixelsPerMeter;
+  state.nodes.forEach((node) => {
+    node.calculatedFlowCmm = node.type === "inlet" ? node.flowCmm : 0;
+  });
+
+  for (let iter = 0; iter < state.nodes.length; iter += 1) {
+    let changed = false;
+    for (const edge of state.edges) {
+      const from = state.nodes.find((item) => item.id === edge.from);
+      const to = state.nodes.find((item) => item.id === edge.to);
+      if (!from || !to) continue;
+      edge.flowCmm = from.calculatedFlowCmm || 0;
+      const incoming = state.edges
+        .filter((candidate) => candidate.to === to.id)
+        .reduce((acc, candidate) => {
+          const source = state.nodes.find((item) => item.id === candidate.from);
+          return acc + (source?.calculatedFlowCmm || 0);
+        }, 0);
+      const next = (to.type === "inlet" ? to.flowCmm : 0) + incoming;
+      if (Math.abs(next - to.calculatedFlowCmm) > 0.0001) {
+        to.calculatedFlowCmm = next;
+        changed = true;
+      }
+    }
+    if (!changed) break;
+  }
+
+  for (const edge of state.edges) {
+    const velocity = edge.velocity || Number(velocityInput.value) || 0;
+    edge.diameter = recommendDiameter(edge.flowCmm || 0, velocity, edge.shape);
+  }
+
+  renderNodes();
+  renderEdges();
+  syncForms();
+}
+
+/**
+ * Suggests duct diameter/side length based on flow and velocity.
+ * @param {number} flowCmm - Flow in CMM.
+ * @param {number} velocity - Velocity m/s.
+ * @param {"round"|"square"} shape - Pipe shape.
+ * @returns {number} Diameter or side length in meters.
+ */
+function recommendDiameter(flowCmm, velocity, shape) {
+  if (!flowCmm || !velocity) return 0;
+  const flowM3s = flowCmm / 60;
+  const area = flowM3s / velocity;
+  if (shape === "square") {
+    return Math.sqrt(area);
+  }
+  return Math.sqrt((4 * area) / Math.PI);
+}
+
+/**
+ * Deletes a node and all connected edges.
+ * @param {string} id - Node id to delete.
+ */
+function deleteNode(id) {
+  state.nodes = state.nodes.filter((node) => node.id !== id);
+  state.edges = state.edges.filter((edge) => edge.from !== id && edge.to !== id);
+  state.selectedNodeId = null;
+  state.selectedEdgeId = null;
+  clearNodeForm();
+  clearEdgeForm();
+  renderAll();
+}
+
+/** Rerenders nodes and edges. */
+function renderAll() {
+  renderNodes();
+  renderEdges();
+}
+
+/**
+ * Serializes segments into a readable string.
+ * @param {Segment[]} segments - Route segments.
+ * @returns {string} Description string.
+ */
+function describeSegments(segments) {
+  return segments.map((segment) => `${segment.dir} ${segment.length.toFixed(2)}`).join(", ");
+}
+
+/**
+ * Builds text output for export.
+ * @returns {string} Text summary.
+ */
+function buildText() {
+  const lines = [];
+  for (const edge of state.edges) {
+    const from = state.nodes.find((node) => node.id === edge.from);
+    const to = state.nodes.find((node) => node.id === edge.to);
+    const shapeText = edge.shape === "square" ? "?寧恣" : "?恣";
+    lines.push(
+      `${from?.name || "?"} -> ${to?.name || "?"} | ${edge.lengthMeters.toFixed(
+        2,
+      )}m | ${shapeText} ${edge.diameter?.toFixed(2)}m | v=${edge.velocity || velocityInput.value}m/s`,
+    );
+  }
+  return lines.join("\n");
+}
+
+/**
+ * Formats numbers to two decimals.
+ * @param {number} num - Value.
+ * @returns {string} Fixed string.
+ */
+function formatNumber(num) {
+  return Number(num || 0).toFixed(2);
+}
+
+/**
+ * Populates the node detail form.
+ * @param {Node} node - Selected node.
+ */
+function populateNodeForm(node) {
+  nodeNameInput.value = node.name;
+  nodeTypeInput.value = node.type;
+  nodeFlowInput.value = node.flowCmm ?? 0;
+  nodeFlowInput.disabled = node.type !== "inlet";
+}
+
+/**
+ * Populates the edge detail form.
+ * @param {Edge} edge - Selected edge.
+ */
+function populateEdgeForm(edge) {
+  edgeRouteInput.value = describeSegments(edge.segments);
+  edgeVelocityInput.value = edge.velocity ?? "";
+  edgeShapeInput.value = edge.shape === "square" ? "square" : "round";
+  edgeLengthInput.value = edge.lengthMeters?.toFixed(2) ?? "";
+  edgeDiameterInput.value = edge.diameter ? edge.diameter.toFixed(2) : "";
+}
+
+/** Clears node form inputs. */
+function clearNodeForm() {
+  nodeNameInput.value = "";
+  nodeTypeInput.value = "";
+  nodeFlowInput.value = "";
+  nodeFlowInput.disabled = true;
+}
+
+/** Clears edge form inputs. */
+function clearEdgeForm() {
+  edgeRouteInput.value = "";
+  edgeVelocityInput.value = "";
+  edgeShapeInput.value = "round";
+  edgeLengthInput.value = "";
+  edgeDiameterInput.value = "";
+}
+
+/** Syncs forms with the current selection. */
+function syncForms() {
+  if (state.selectedNodeId) {
+    const node = state.nodes.find((item) => item.id === state.selectedNodeId);
+    if (node) populateNodeForm(node);
+  }
+  if (state.selectedEdgeId) {
+    const edge = state.edges.find((item) => item.id === state.selectedEdgeId);
+    if (edge) populateEdgeForm(edge);
+  }
+}
+
+renderAll();
+setStatus("敺 | ?喲?啣?蝭暺?);
+
